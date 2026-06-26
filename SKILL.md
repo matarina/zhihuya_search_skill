@@ -20,7 +20,7 @@ When login is required:
 </credential_handling>
 
 <quick_start>
-Use one named session for the whole task. Do not open parallel sessions unless each one is logged in.
+Use one named session for the whole task. Reuse it for every query after login; new sessions often lose auth and redirect to the account site.
 
 ```bash
 npx -y agent-browser --session zhihuiya-patent-search open https://analytics.zhihuiya.com/search/input/simple
@@ -78,9 +78,11 @@ If the user gives a patent PDF or only a filename:
    - Abstract, snippet, or highlighted match text when visible
    - Detail-page URL when available
    - Use `get text body` after the result page loads; it exposes table rows more reliably than `snapshot -i`.
+   - If `get text body` is empty, only says `T`, or contains no publication numbers after a result-count page loads, wait 2 seconds, re-open the same URL in the same session, and retry once before changing the query.
    - If `snapshot -i` omits titles or numbers, do not assume no results. Use `get text body`, a screenshot, or open the detail row.
    - If the terminal/UI truncates output, redirect the full page text to a file and inspect that file:
      `npx -y agent-browser --session zhihuiya-patent-search get text body > /tmp/zhihuiya-results.txt`
+   - For multi-query similar-patent work, capture the visible count and first-page rows, then move to the next query. Do not spend more than one retry or one optional detail-row open on a single query unless the user asks for deep analysis.
 
 6. Return results as Markdown. Include the search query, date searched, result count if visible, and up to the user's requested number of results. If the user does not specify a count, return the top 10 visible results.
 </workflow>
@@ -110,12 +112,13 @@ When searching similar patents from a seed patent or PDF:
 1. Extract the seed title, abstract, independent claims, assignee/applicant, inventors, dates, IPC/CPC classes, publication/application numbers, family clues, and distinctive claim nouns first.
 2. Search the exact publication number to anchor the family and confirm Patsnap metadata.
 3. Run narrow concept queries from the claims, for example target + molecule/modality + carrier/scaffold/application. Prefer several focused 2-4 term queries over one broad query.
-4. De-duplicate by publication number and family. Treat continuations, equivalents, translations, and same-priority publications as one family unless the user asks for every publication.
-5. Separate:
+4. Run all queries in the same logged-in `agent-browser --session zhihuiya-patent-search`; if any URL redirects to `account.zhihuiya.com`, return to the original logged-in session instead of creating another session.
+5. De-duplicate by publication number and family. Treat continuations, equivalents, translations, and same-priority publications as one family unless the user asks for every publication.
+6. Separate:
    - seed family or direct equivalents,
    - close technical analogs,
    - broader background patents.
-6. State the query set used, de-duplication rule, and visible-result limits in the final answer.
+7. State the query set used, de-duplication rule, and visible-result limits in the final answer.
 </similar_patent_workflow>
 
 <output_format>
@@ -140,6 +143,7 @@ Add links below the table only when the URLs are too long for the table.
 - Do not use stale element refs after a page update.
 - Do not split one task across new `agent-browser --session ...` sessions after login; new sessions usually lose auth and redirect to the login page.
 - Do not conclude "no results" from a truncated snapshot or collapsed terminal artifact. Confirm with `get text body` saved to a file.
+- Do not loop on one broad result page during similar-patent work. Record the visible rows and continue through the planned query set.
 - Do not manually encode Chinese query URLs; a single wrong character changes the search.
 - Do not switch to a headful browser/Puppeteer flow unless it is already available. The headless `agent-browser` path is enough.
 - Do not download exports or PDFs unless the user explicitly asks; this v1 skill is search and visible extraction only.
