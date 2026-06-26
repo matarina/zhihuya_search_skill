@@ -35,8 +35,9 @@ If the user gives a patent PDF or only a filename:
 1. Do not assume the PDF is inside this skill directory. Locate it from the workspace first, e.g. `rg --files /mnt/data3/mxw | rg '/[^/]+\\.pdf$'`.
 2. Extract seed text before searching:
    `pdftotext -layout /path/to/patent.pdf - | sed -n '1,220p'`
-3. Pull out title, abstract, claims, assignee, inventors, IPC/CPC, publication number, and distinctive claim terms.
-4. Watch for ambiguous abbreviations, English common words used as technical terms, and machine-translated titles. Check the original title/abstract and technical context before accepting or rejecting a hit.
+3. Pull out title, abstract, independent claims, assignee/applicant, inventors, priority/application/publication dates, IPC/CPC, publication/application numbers, family clues, and distinctive claim terms.
+4. Use the extracted metadata to seed the query set: exact number first, then 2-5 narrow technical phrases from claim nouns, target, composition, mechanism, carrier/scaffold, use case, or manufacturing step.
+5. Watch for ambiguous abbreviations, English common words used as technical terms, and machine-translated titles. Check the original title/abstract and technical context before accepting or rejecting a hit.
 </seed_document_handling>
 
 <workflow>
@@ -60,9 +61,11 @@ If the user gives a patent PDF or only a filename:
    - Fast path for repeatable keyword/publication searches: open the result URL directly in the logged-in session:
      `https://analytics.zhihuiya.com/search/result/tablelist/1?sort=sdesc&limit=100&q={urlencoded query}&_type=query&search_mode=publication`
    - Generate `{urlencoded query}` mechanically, especially for Chinese. Do not hand-type percent encoding:
-     `python -c 'from urllib.parse import quote; print(quote("关键词A 关键词B"))'`
+     - If available in the skill directory, use `python scripts/build_search_url.py "关键词A 关键词B"` and open the printed URL with `agent-browser open`.
+     - Otherwise use the stdlib one-liner: `python -c 'from urllib.parse import quote; print(quote("关键词A 关键词B"))'`
    - UI path from `/search/input/simple`: click the contenteditable search box, use `keyboard inserttext`, then click Search. `fill` may not work because the input is not a normal textbox.
-   - For keyword queries, enter the user's exact search phrase unless they ask for query expansion. For similar-patent work, run 2-5 narrow queries rather than one broad query.
+   - For keyword queries, enter the user's exact search phrase unless they ask for query expansion.
+   - For similar-patent work, run 2-5 narrow queries rather than one broad query. Prefer narrow combinations such as target + molecule/modality + carrier/scaffold/application/manufacturing step.
    - For applicants, inventors, publication numbers, or application numbers, use the matching field/filter when the UI exposes one; otherwise use the main simple-search box.
    - Submit with the visible Search button or Enter, then wait for results.
 
@@ -104,14 +107,15 @@ Use `eval --stdin` for multiline or quote-heavy JavaScript. Avoid inline JS with
 <similar_patent_workflow>
 When searching similar patents from a seed patent or PDF:
 
-1. Extract the seed title, abstract, assignee, inventors, IPC/CPC classes, and claim nouns first.
+1. Extract the seed title, abstract, independent claims, assignee/applicant, inventors, dates, IPC/CPC classes, publication/application numbers, family clues, and distinctive claim nouns first.
 2. Search the exact publication number to anchor the family and confirm Patsnap metadata.
 3. Run narrow concept queries from the claims, for example target + molecule/modality + carrier/scaffold/application. Prefer several focused 2-4 term queries over one broad query.
-4. De-duplicate by publication number/family and separate:
+4. De-duplicate by publication number and family. Treat continuations, equivalents, translations, and same-priority publications as one family unless the user asks for every publication.
+5. Separate:
    - seed family or direct equivalents,
    - close technical analogs,
    - broader background patents.
-5. State the query set used and visible-result limits in the final answer.
+6. State the query set used, de-duplication rule, and visible-result limits in the final answer.
 </similar_patent_workflow>
 
 <output_format>
