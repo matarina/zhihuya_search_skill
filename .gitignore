@@ -1,0 +1,13 @@
+outputs/
+*.docx
+*_media/
+__pycache__/
+*.pyc
+.pytest_cache/
+tools/_last_result_*.html
+tools/node_modules/
+tools/.cache/
+tests/_math_test_*
+*.auth.json
+*cookies*
+*session*.json

@@ -1,128 +1,110 @@
 ---
 name: search-zhihuiya-patents
-description: Automates Patsnap/Zhihuiya patent search with agent-browser, including login, simple patent queries, and visible result extraction. Use when the user asks to search Zhihuiya, Patsnap, 智慧芽, patent analytics, patent keywords, applicants, inventors, or publication numbers on analytics.zhihuiya.com.
+description: Automates Patsnap/Zhihuiya patent search, similar-patent analysis, patent mining, disclosure drafting, prior-art comparison, Word export, and disclosure iteration. Use when the user asks to search Zhihuiya, Patsnap, 智慧芽, patent analytics, patent keywords, applicants, inventors, publication numbers, 专利挖掘, 技术交底书, 查新, or patent disclosure work.
 ---
 
 <objective>
-Search patents on Patsnap/Zhihuiya Analytics at `https://analytics.zhihuiya.com/search/input/simple` using `agent-browser`. Handle login, run simple searches, and return visible patent results in a concise structured summary.
+Search patents on Patsnap/Zhihuiya Analytics and run a full patent-disclosure workflow when requested. This skill keeps Zhihuiya as the primary prior-art source, then reuses the disclosure drafting, Office conversion, Mermaid/Word export, iteration logging, and self-check workflow borrowed from `patent-disclosure-skill`.
 </objective>
 
-<credential_handling>
-Do not store account names, passwords, tokens, cookies, or exported auth states in this skill.
-
-When login is required:
-
-1. Prefer credentials already provided in the current conversation.
-2. Otherwise, check environment variables `ZHIHUIYA_EMAIL` and `ZHIHUIYA_PASSWORD`.
-3. If either value is missing, ask the user for the missing value(s) before logging in.
-4. Never echo the password in final output, logs, summaries, or generated files.
-5. Do not persist credentials with `agent-browser auth save` unless the user explicitly asks for saved login.
-</credential_handling>
+<essential_principles>
+- **Zhihuiya first for prior art**: For disclosure work, run Zhihuiya/Patsnap searches before CNIPA or WebSearch. Use CNIPA as official-source fallback or corroboration, not the default first step.
+- **One browser session**: Use one named `agent-browser --session zhihuiya-patent-search` after login. New sessions often lose auth and redirect to `account.zhihuiya.com`.
+- **No credential persistence**: Do not store account names, passwords, tokens, cookies, browser state, or exported auth states in this skill. Use conversation-provided credentials or `ZHIHUIYA_EMAIL` / `ZHIHUIYA_PASSWORD`; never echo passwords.
+- **Generated disclosures are artifacts, not repo content**: Save user outputs under `outputs/{case}/` unless the user specifies another path. Do not commit generated disclosures, converted Office markdown, screenshots, downloaded HTML, cookies, or auth state.
+- **Borrowed workflow prompts are authoritative**: Before each disclosure step, read the mapped `prompts/*.md` file and follow it, with the Zhihuiya-first override in `prompts/prior_art_search.md`.
+</essential_principles>
 
 <quick_start>
-Use one named session for the whole task. Reuse it for every query after login; new sessions often lose auth and redirect to the account site.
+For search-only tasks:
 
 ```bash
 npx -y agent-browser --session zhihuiya-patent-search open https://analytics.zhihuiya.com/search/input/simple
 npx -y agent-browser --session zhihuiya-patent-search wait --load networkidle
 npx -y agent-browser --session zhihuiya-patent-search snapshot -i
 ```
-</quick_start>
 
-<seed_document_handling>
-If the user gives a patent PDF or only a filename:
-
-1. Do not assume the PDF is inside this skill directory. Locate it from the workspace first, e.g. `rg --files /mnt/data3/mxw | rg '/[^/]+\\.pdf$'`.
-2. Extract seed text before searching:
-   `pdftotext -layout /path/to/patent.pdf - | sed -n '1,220p'`
-3. Pull out title, abstract, independent claims, assignee/applicant, inventors, priority/application/publication dates, IPC/CPC, publication/application numbers, family clues, and distinctive claim terms.
-4. Use the extracted metadata to seed the query set: exact number first, then 2-5 narrow technical phrases from claim nouns, target, composition, mechanism, carrier/scaffold, use case, or manufacturing step.
-5. Watch for ambiguous abbreviations, English common words used as technical terms, and machine-translated titles. Check the original title/abstract and technical context before accepting or rejecting a hit.
-</seed_document_handling>
-
-<workflow>
-1. Open `https://analytics.zhihuiya.com/search/input/simple` with a named session, usually `zhihuiya-patent-search`.
-
-2. If redirected to `account.zhihuiya.com` or a Patsnap login page:
-   - Use the Account tab if it is not already selected.
-   - Get credentials according to `<credential_handling>`.
-   - Fill the email field with the provided email/account.
-   - Fill the password field with the provided password.
-   - Check "Keep me logged in" if visible.
-   - Check the "User Agreement" / "Privacy Policy" agreement checkbox if visible and unchecked.
-   - Click Login.
-   - If a second modal with "Agree" appears, click "Agree".
-   - Wait for network idle or for the URL to return to `analytics.zhihuiya.com`.
-   - If CAPTCHA, MFA, device verification, or account security challenge appears, stop and ask the user to complete it manually.
-
-3. After every navigation, click, form submission, filter change, or dynamic page update, run a fresh `snapshot -i`; old refs are invalid after page changes.
-
-4. Run the user's requested simple search:
-   - Fast path for repeatable keyword/publication searches: open the result URL directly in the logged-in session:
-     `https://analytics.zhihuiya.com/search/result/tablelist/1?sort=sdesc&limit=100&q={urlencoded query}&_type=query&search_mode=publication`
-   - Generate `{urlencoded query}` mechanically, especially for Chinese. Do not hand-type percent encoding:
-     - If available in the skill directory, use `python scripts/build_search_url.py "关键词A 关键词B"` and open the printed URL with `agent-browser open`.
-     - Otherwise use the stdlib one-liner: `python -c 'from urllib.parse import quote; print(quote("关键词A 关键词B"))'`
-   - UI path from `/search/input/simple`: click the contenteditable search box, use `keyboard inserttext`, then click Search. `fill` may not work because the input is not a normal textbox.
-   - For keyword queries, enter the user's exact search phrase unless they ask for query expansion.
-   - For similar-patent work, run 2-5 narrow queries rather than one broad query. Prefer narrow combinations such as target + molecule/modality + carrier/scaffold/application/manufacturing step.
-   - For applicants, inventors, publication numbers, or application numbers, use the matching field/filter when the UI exposes one; otherwise use the main simple-search box.
-   - Submit with the visible Search button or Enter, then wait for results.
-
-5. Extract visible results from the results page:
-   - Patent title
-   - Publication or application number
-   - Applicant/assignee when visible
-   - Inventor when visible
-   - Publication/application date when visible
-   - Abstract, snippet, or highlighted match text when visible
-   - Detail-page URL when available
-   - Use `get text body` after the result page loads; it exposes table rows more reliably than `snapshot -i`.
-   - If `get text body` is empty, only says `T`, or contains no publication numbers after a result-count page loads, wait 2 seconds, re-open the same URL in the same session, and retry once before changing the query.
-   - If `snapshot -i` omits titles or numbers, do not assume no results. Use `get text body`, a screenshot, or open the detail row.
-   - If the terminal/UI truncates output, redirect the full page text to a file and inspect that file:
-     `npx -y agent-browser --session zhihuiya-patent-search get text body > /tmp/zhihuiya-results.txt`
-   - For multi-query similar-patent work, capture the visible count and first-page rows, then move to the next query. Do not spend more than one retry or one optional detail-row open on a single query unless the user asks for deep analysis.
-
-6. Return results as Markdown. Include the search query, date searched, result count if visible, and up to the user's requested number of results. If the user does not specify a count, return the top 10 visible results.
-</workflow>
-
-<command_patterns>
-- Correct: `npx -y agent-browser --session zhihuiya-patent-search get text body`
-- Wrong: `npx -y agent-browser --session zhihuiya-patent-search 'get text body'`
-- Correct JavaScript extraction for complex pages:
+For direct result URLs, use:
 
 ```bash
-npx -y agent-browser --session zhihuiya-patent-search eval --stdin <<'JS'
-JSON.stringify(
-  Array.from(document.querySelectorAll('body *'))
-    .map(e => e.textContent && e.textContent.trim())
-    .filter(Boolean)
-    .slice(0, 200)
-)
-JS
+python scripts/build_search_url.py "关键词A 关键词B"
+npx -y agent-browser --session zhihuiya-patent-search open 'PRINTED_URL'
 ```
+</quick_start>
 
-Use `eval --stdin` for multiline or quote-heavy JavaScript. Avoid inline JS with reused `let` names or nested shell quotes.
-</command_patterns>
+<credential_handling>
+When login is required:
+
+1. Prefer credentials already provided in the current conversation.
+2. Otherwise, check `ZHIHUIYA_EMAIL` and `ZHIHUIYA_PASSWORD`.
+3. If either value is missing, ask the user for the missing value(s).
+4. Fill the account and password fields, check visible agreement boxes, click Login, and wait for return to `analytics.zhihuiya.com`.
+5. If CAPTCHA, MFA, device verification, or account security challenge appears, stop and ask the user to complete it manually.
+6. Do not persist credentials with `agent-browser auth save` or `state save` unless the user explicitly asks.
+</credential_handling>
+
+<routing>
+Route directly from user intent:
+
+| User intent | Procedure |
+|---|---|
+| Simple Zhihuiya search, patent number, keyword, applicant, inventor | Follow `<zhihuiya_search_workflow>` |
+| Similar patents from a publication number, PDF, patent text, or seed technology | Follow `<similar_patent_workflow>` |
+| 专利挖掘, 技术交底书, 交底书, 查新+成稿, disclosure drafting | Follow `<disclosure_workflow>` |
+| Continue, revise, correct, merge, or supplement an existing disclosure draft | Follow `<iteration_workflow>` |
+</routing>
+
+<zhihuiya_search_workflow>
+1. Open `https://analytics.zhihuiya.com/search/input/simple` in `zhihuiya-patent-search`.
+2. Log in according to `<credential_handling>` if redirected.
+3. Generate encoded result URLs mechanically. Prefer `python scripts/build_search_url.py "query"`; otherwise use `urllib.parse.quote`.
+4. Run searches in the same logged-in session. After every navigation or dynamic page update, run a fresh `snapshot -i`; old refs are invalid.
+5. Extract visible results with `get text body`; if it is empty, only says `T`, or has no publication numbers after a result-count page loads, wait 2 seconds, re-open the same URL in the same session, and retry once.
+6. Return Markdown with query, source, searched date, visible count, and visible result rows. State limits such as "top 10 visible results" or "detail pages not opened."
+</zhihuiya_search_workflow>
 
 <similar_patent_workflow>
-When searching similar patents from a seed patent or PDF:
-
-1. Extract the seed title, abstract, independent claims, assignee/applicant, inventors, dates, IPC/CPC classes, publication/application numbers, family clues, and distinctive claim nouns first.
-2. Search the exact publication number to anchor the family and confirm Patsnap metadata.
-3. Run narrow concept queries from the claims, for example target + molecule/modality + carrier/scaffold/application. Prefer several focused 2-4 term queries over one broad query.
-4. Run all queries in the same logged-in `agent-browser --session zhihuiya-patent-search`; if any URL redirects to `account.zhihuiya.com`, return to the original logged-in session instead of creating another session.
-5. De-duplicate by publication number and family. Treat continuations, equivalents, translations, and same-priority publications as one family unless the user asks for every publication.
-6. Separate:
-   - seed family or direct equivalents,
-   - close technical analogs,
-   - broader background patents.
-7. State the query set used, de-duplication rule, and visible-result limits in the final answer.
+1. If the user gives a PDF or filename, locate it from the workspace and extract seed text, e.g. `pdftotext -layout /path/to/patent.pdf - | sed -n '1,220p'`.
+2. Extract title, abstract, independent claims, assignee/applicant, inventors, dates, IPC/CPC, publication/application numbers, family clues, and distinctive claim nouns.
+3. Search the exact publication number first to anchor the family.
+4. Run 2-5 narrow Zhihuiya queries from claim terms, target, molecule/modality, carrier/scaffold, application, mechanism, or manufacturing step. Use one logged-in session for all queries.
+5. For each query, capture visible count and first-page rows, then move on. Do not spend more than one retry or one optional detail-row open on a single query unless the user asks for deep analysis.
+6. De-duplicate by publication number and family. Separate seed family/direct equivalents, close technical analogs, and broad background patents.
+7. State query set, de-duplication rule, and visible-result limits.
 </similar_patent_workflow>
 
+<disclosure_workflow>
+Run the borrowed disclosure workflow, but make Step 5 Zhihuiya-first:
+
+1. Read `prompts/intake.md` and collect the minimum missing input.
+2. Read `prompts/project_scan.md`; if the scan scope contains `.docx` or `.pptx`, convert first with `tools/docx_to_md.py` or `tools/pptx_to_md.py`, then read the Markdown outputs.
+3. Read `prompts/patent_points_analyzer.md`; identify candidate patent points, merge related points, and select the disclosure target.
+4. Read `prompts/prior_art_search.md`; run Zhihuiya prior-art search first, then optional CNIPA/WebSearch fallback or corroboration.
+5. Read `prompts/disclosure_preview.md`; provide the summary preview unless the user explicitly skips it.
+6. Read `prompts/disclosure_builder.md` and `prompts/template_reference.md`; draft the disclosure with desensitization, fenced Mermaid for section 3.2 and 3.4, and required formula style.
+7. Render final artifacts with `tools/mermaid_render.py`, producing `{case}_{YYYYMMDDHHmmss}.md` and matching `.docx`.
+8. Read `prompts/disclosure_self_check.md`; internally fix logic, formula, parameter, citation, and format issues before final delivery. Do not add a self-check section to the disclosure body.
+</disclosure_workflow>
+
+<iteration_workflow>
+When the user is continuing from an existing disclosure or asks to correct, merge, supplement, or revise:
+
+1. Read `prompts/iteration_context.md`.
+2. Read `prompts/merger.md` for new material or expansion, or `prompts/correction_handler.md` for factual/style corrections.
+3. Save a new timestamped `.md` and `.docx`; do not overwrite the previous draft unless the user explicitly asks.
+4. Append `交底书修订对话记录.md` using `tools/iteration_dialog_log.py` or the same structure manually.
+5. Output the required merge or correction summary.
+</iteration_workflow>
+
+<tooling>
+- Basic Python dependencies: `pip install -r requirements.txt`
+- Optional CNIPA fallback: `pip install -r tools/requirements-cnipa.txt && python -m playwright install chromium`
+- Mermaid rendering: run `npm install` in `tools/` when repeated rendering matters; otherwise `mermaid_render.py` can fall back to `npx`.
+- Word export and Office conversion tools are in `tools/`; detailed usage is in `tools/README.md`.
+</tooling>
+
 <output_format>
-Use this compact format:
+For search-only work:
 
 ```markdown
 Query: ...
@@ -132,27 +114,24 @@ Visible count: ...
 
 | # | Title | Number | Applicant/Assignee | Date | Notes |
 |---|---|---|---|---|---|
-| 1 | ... | ... | ... | ... | ... |
 ```
 
-Add links below the table only when the URLs are too long for the table.
+For disclosure work, deliver the generated `.md` and `.docx` paths, plus a concise summary of search sources, closest prior art, and any remaining user decisions.
 </output_format>
 
 <anti_patterns>
-- Do not claim the search is exhaustive if only visible page results were extracted.
-- Do not use stale element refs after a page update.
-- Do not split one task across new `agent-browser --session ...` sessions after login; new sessions usually lose auth and redirect to the login page.
-- Do not conclude "no results" from a truncated snapshot or collapsed terminal artifact. Confirm with `get text body` saved to a file.
-- Do not loop on one broad result page during similar-patent work. Record the visible rows and continue through the planned query set.
-- Do not manually encode Chinese query URLs; a single wrong character changes the search.
-- Do not switch to a headful browser/Puppeteer flow unless it is already available. The headless `agent-browser` path is enough.
-- Do not download exports or PDFs unless the user explicitly asks; this v1 skill is search and visible extraction only.
-- Do not include account names or passwords in final user-facing output unless the user explicitly asks for account confirmation; never include passwords.
+- Do not claim a Zhihuiya search is exhaustive when only visible rows were extracted.
+- Do not split logged-in searches across new `agent-browser --session ...` sessions.
+- Do not conclude "no results" from a truncated snapshot or collapsed terminal output; retry `get text body` or save it to a file.
+- Do not manually encode Chinese query URLs.
+- Do not store credentials, cookies, auth states, generated disclosures, or downloaded result pages in git.
+- Do not run the CNIPA-first path from the borrowed skill before Zhihuiya in this fork.
+- Do not put a self-check checklist into the final disclosure body.
 </anti_patterns>
 
 <success_criteria>
-- The browser reaches the simple search page or stops on a user-action-required security challenge.
-- The requested search is submitted with the user's query unchanged unless they ask otherwise.
-- Visible results are summarized with titles, numbers, key metadata, snippets, and links when available.
-- The final answer states any limits, such as "top 10 visible results" or "detail pages not opened."
+- Search tasks return visible Zhihuiya results with query, date, count/limits, metadata, and source limits.
+- Similar-patent tasks anchor the exact family, run focused query sets, de-duplicate, and separate close analogs from broad background.
+- Disclosure tasks produce timestamped `.md` and `.docx` artifacts, include Zhihuiya-first prior-art analysis, and pass internal self-check.
+- Iteration tasks preserve prior drafts, create new timestamped artifacts, and append revision logs.
 </success_criteria>
