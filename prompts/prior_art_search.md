@@ -28,10 +28,33 @@
 
 5. **抽取与重试**：
    - 每轮记录查询词、可见结果数、Patsnap families/total、是否打开详情页。
+   - 全流程交底书任务中，将每轮记录同步写入用户输出目录下的 **`search_log.md`**；若用户未给输出目录，写入 `outputs/{case}/search_log.md`。该文件只记录检索证据和限制，不记录账号、密码、cookie、auth state 或原始浏览器状态。
    - 若 `get text body` 为空、仅为 `T`、或已显示结果数但无公开号，等待 2 秒、在同一会话重新打开同一 URL 并重试一次。
    - 多查询查新时，每个查询抽取可见计数和第一页结果后继续下一查询；除非用户要求深挖，不要在单一结果页循环。
 6. **合并责任在 Agent**：按公开号和 Patsnap family 去重，分为 **种子同族/直接等同**、**近似技术方案**、**宽泛背景技术**。不要声称穷尽检索，除非实际完成多页和详情页审阅。
 7. **写入要求**：查新笔记和 1.1 应写明 Zhihuiya/Patsnap、检索日期、关键词组合、可见结果限制、最接近现有技术、公开号、申请人、方案概括、与本案差异。
+
+8. **检索日志模板**（`search_log.md`，全流程交底书任务必填）：
+
+   ```markdown
+   # Prior-Art Search Log
+
+   Source: Zhihuiya/Patsnap first; CNIPA/Google Patents only as noted
+   Searched: YYYY-MM-DD
+   Seed: ...
+
+   | Query | Result URL | Visible count | Families/total | First-page publication numbers | Detail/fallback limit |
+   |---|---|---:|---|---|---|
+   | CN... | ... | ... | ... | ... | exact family |
+
+   ## Grouped Findings
+   - Seed family/direct equivalents: ...
+   - Close analogs: ...
+   - Broad background: ...
+
+   ## Limits
+   - ...
+   ```
 
 ### B. 中国专利公布公告（官方补充 / fallback）
 

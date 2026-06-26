@@ -70,6 +70,19 @@ For 专利挖掘 / 技术交底书 / 查新 / disclosure drafting tasks, the ski
 
 Generated disclosures should go under `outputs/{case}/` unless the user specifies another path. Final artifacts use `{案件名}_{YYYYMMDDHHmmss}.md` and matching `.docx`.
 
+Full disclosure runs also write sidecar evidence:
+
+- `search_log.md`: Zhihuiya/Patsnap queries, result URLs, visible counts, families/total, first-page publication numbers, and extraction limits.
+- `run_report.md`: generated artifact paths, closest prior art grouped by seed family / close analogs / broad background, fallback sources, self-check summary, and obstacles.
+
+Initialize those sidecars while building the first exact-family search URL:
+
+```bash
+python scripts/build_search_url.py --init-output-dir outputs/case "CN117964767B"
+```
+
+This keeps workflow evidence out of the disclosure body while making automated end-to-end runs auditable.
+
 ## Attribution
 
 Disclosure prompts and tooling are borrowed from `patent-disclosure-skill` by handsomestWei under the MIT License. See `LICENSE`.

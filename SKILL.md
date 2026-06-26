@@ -12,6 +12,7 @@ Search patents on Patsnap/Zhihuiya Analytics and run a full patent-disclosure wo
 - **One browser session**: Use one named `agent-browser --session zhihuiya-patent-search` after login. New sessions often lose auth and redirect to `account.zhihuiya.com`.
 - **No credential persistence**: Do not store account names, passwords, tokens, cookies, browser state, or exported auth states in this skill. Use conversation-provided credentials or `ZHIHUIYA_EMAIL` / `ZHIHUIYA_PASSWORD`; never echo passwords.
 - **Generated disclosures are artifacts, not repo content**: Save user outputs under `outputs/{case}/` unless the user specifies another path. Do not commit generated disclosures, converted Office markdown, screenshots, downloaded HTML, cookies, or auth state.
+- **Run evidence stays beside artifacts**: For full disclosure work, create the output directory at the start, keep a `search_log.md` while searching, and finish with a separate `run_report.md`. The report is for delivery/status only; do not append it to the disclosure body.
 - **Borrowed workflow prompts are authoritative**: Before each disclosure step, read the mapped `prompts/*.md` file and follow it, with the Zhihuiya-first override in `prompts/prior_art_search.md`.
 </essential_principles>
 
@@ -76,14 +77,24 @@ Route directly from user intent:
 <disclosure_workflow>
 Run the borrowed disclosure workflow, but make Step 5 Zhihuiya-first:
 
-1. Read `prompts/intake.md` and collect the minimum missing input.
-2. Read `prompts/project_scan.md`; if the scan scope contains `.docx` or `.pptx`, convert first with `tools/docx_to_md.py` or `tools/pptx_to_md.py`, then read the Markdown outputs.
-3. Read `prompts/patent_points_analyzer.md`; identify candidate patent points, merge related points, and select the disclosure target.
-4. Read `prompts/prior_art_search.md`; run Zhihuiya prior-art search first, then optional CNIPA/WebSearch fallback or corroboration.
-5. Read `prompts/disclosure_preview.md`; provide the summary preview unless the user explicitly skips it.
-6. Read `prompts/disclosure_builder.md` and `prompts/template_reference.md`; draft the disclosure with desensitization, fenced Mermaid for section 3.2 and 3.4, and required formula style.
-7. Render final artifacts with `tools/mermaid_render.py`, producing `{case}_{YYYYMMDDHHmmss}.md` and matching `.docx`.
-8. Read `prompts/disclosure_self_check.md`; internally fix logic, formula, parameter, citation, and format issues before final delivery. Do not add a self-check section to the disclosure body.
+1. Resolve the output directory before long-running work: use the user-specified path if present; otherwise use `outputs/{case}/`. Resolve prompt/tool paths relative to the directory containing this `SKILL.md` when environment variables such as `CLAUDE_SKILL_DIR` are unset.
+2. Before opening Zhihuiya or running any long browser step, run the URL helper with `--init-output-dir` so the output directory and sidecar placeholders exist before the first search URL is opened:
+
+   ```bash
+   python scripts/build_search_url.py --init-output-dir "$OUTPUT_DIR" "CN117964767B"
+   ```
+
+   Replace `$OUTPUT_DIR` and the query with the resolved path and first exact-family query. The command prints the URL to open and creates `search_log.md` plus `run_report.md`. Never include credentials in these files.
+3. Update `{output_dir}/search_log.md` during prior-art search. Record seed metadata, exact-family query, each Zhihuiya query, result URL, visible count, Patsnap families/total, first-page publication numbers, retry/fallback status, and detail-page limits. Never write credentials, cookies, auth state, or raw browser state.
+4. Read `prompts/intake.md` and collect the minimum missing input.
+5. Read `prompts/project_scan.md`; if the scan scope contains `.docx` or `.pptx`, convert first with `tools/docx_to_md.py` or `tools/pptx_to_md.py`, then read the Markdown outputs.
+6. Read `prompts/patent_points_analyzer.md`; identify candidate patent points, merge related points, and select the disclosure target.
+7. Read `prompts/prior_art_search.md`; run Zhihuiya prior-art search first, then optional CNIPA/WebSearch fallback or corroboration. Keep the search bounded: exact seed/family plus 2-5 focused query blocks unless the user asks for deep search.
+8. Read `prompts/disclosure_preview.md`; provide the summary preview unless the user explicitly skips it or has requested an automated end-to-end run.
+9. Read `prompts/disclosure_builder.md` and `prompts/template_reference.md`; draft the disclosure with desensitization, fenced Mermaid for section 3.2 and 3.4, and required formula style.
+10. Render final artifacts with `tools/mermaid_render.py`, producing `{case}_{YYYYMMDDHHmmss}.md` and matching `.docx`. If Mermaid or Word export is blocked, still save the `.md` and record the exact blocker in `{output_dir}/run_report.md`.
+11. Read `prompts/disclosure_self_check.md`; internally fix logic, formula, parameter, citation, and format issues before final delivery. Do not add a self-check section to the disclosure body.
+12. Replace the placeholder `{output_dir}/run_report.md` with generated artifact paths, queries used, closest prior art grouped as seed family / close analogs / broad background, visible-result limits, fallback sources, self-check summary, and obstacles. The report is mandatory for full disclosure runs, especially automated or long-running runs.
 </disclosure_workflow>
 
 <iteration_workflow>
@@ -116,7 +127,7 @@ Visible count: ...
 |---|---|---|---|---|---|
 ```
 
-For disclosure work, deliver the generated `.md` and `.docx` paths, plus a concise summary of search sources, closest prior art, and any remaining user decisions.
+For disclosure work, deliver the generated `.md`, `.docx` when available, `search_log.md`, and `run_report.md` paths, plus a concise summary of search sources, closest prior art, visible-result limits, self-check outcome, obstacles, and any remaining user decisions.
 </output_format>
 
 <anti_patterns>
@@ -127,11 +138,12 @@ For disclosure work, deliver the generated `.md` and `.docx` paths, plus a conci
 - Do not store credentials, cookies, auth states, generated disclosures, or downloaded result pages in git.
 - Do not run the CNIPA-first path from the borrowed skill before Zhihuiya in this fork.
 - Do not put a self-check checklist into the final disclosure body.
+- Do not leave a full disclosure run without sidecar evidence files just because the disclosure body was generated.
 </anti_patterns>
 
 <success_criteria>
 - Search tasks return visible Zhihuiya results with query, date, count/limits, metadata, and source limits.
 - Similar-patent tasks anchor the exact family, run focused query sets, de-duplicate, and separate close analogs from broad background.
-- Disclosure tasks produce timestamped `.md` and `.docx` artifacts, include Zhihuiya-first prior-art analysis, and pass internal self-check.
+- Disclosure tasks produce timestamped `.md` and `.docx` artifacts, include Zhihuiya-first prior-art analysis, write `search_log.md` and `run_report.md`, and pass internal self-check.
 - Iteration tasks preserve prior drafts, create new timestamped artifacts, and append revision logs.
 </success_criteria>
